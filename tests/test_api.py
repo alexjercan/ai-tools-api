@@ -9,7 +9,7 @@ def error_code(response: object) -> str:
 
 
 def test_only_contract_routes_are_exposed(client: TestClient) -> None:
-    for path in ("/docs", "/redoc", "/openapi.json", "/", "/inference", "/v1/models"):
+    for path in ("/redoc", "/", "/inference", "/v1/models"):
         assert client.get(path).status_code == 404
     assert client.get("/v1/audio/speech").status_code == 405
     assert client.get("/v1/audio/transcriptions").status_code == 405

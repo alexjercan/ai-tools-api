@@ -164,7 +164,11 @@ def create_app(
     transcription_service: TranscriptionService,
     synthesis_service: SynthesisService,
 ) -> FastAPI:
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(
+        docs_url="/docs",
+        redoc_url=None,
+        openapi_url="/openapi.json",
+    )
     app.add_exception_handler(ApiError, api_error_handler)  # type: ignore[arg-type]
     policies: Dict[Tuple[str, str], RequestPolicy] = {
         ("POST", "/v1/audio/transcriptions"): RequestPolicy(

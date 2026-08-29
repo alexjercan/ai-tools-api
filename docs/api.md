@@ -1,7 +1,7 @@
 # Public API contract
 
-Release 0.1 has two public routes. All other paths return 404. OpenAPI, Swagger,
-and Redoc routes are disabled.
+Release 0.1 has two inference routes. Swagger is available at `/docs` and its
+schema at `/openapi.json`. Redoc is disabled. All other paths return 404.
 
 ## Transcription
 
