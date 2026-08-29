@@ -20,6 +20,13 @@
     url = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json";
     hash = "sha256-7+GcQXvtBV8taZCCSMa6ZQ+hNbyGiw5quz2hgdq2kKA=";
   };
+  deployedVoiceAssets = pkgs.runCommand "ai-tools-api-deployed-voice" {} ''
+    mkdir -p "$out"
+    ln -s ${cfg.piperModel} "$out/en_US-lessac-medium.onnx"
+    ln -s ${cfg.piperConfig} "$out/en_US-lessac-medium.onnx.json"
+  '';
+  deployedVoiceModel = "${deployedVoiceAssets}/en_US-lessac-medium.onnx";
+  deployedVoiceConfig = "${deployedVoiceAssets}/en_US-lessac-medium.onnx.json";
   whisperReady = pkgs.writeShellScript "ai-tools-api-whisper-ready" ''
     for _ in $(${pkgs.coreutils}/bin/seq 1 600); do
       if ${lib.getExe' pkgs.netcat-openbsd "nc"} -z 127.0.0.1 ${toString cfg.whisperPort}; then
@@ -162,8 +169,8 @@ in {
           "AI_TOOLS_API_PORT=${toString cfg.port}"
           "AI_TOOLS_API_WHISPER_URL=http://127.0.0.1:${toString cfg.whisperPort}/private-inference"
           "AI_TOOLS_API_PIPER=${lib.getExe cfg.piperPackage}"
-          "AI_TOOLS_API_PIPER_MODEL=${cfg.piperModel}"
-          "AI_TOOLS_API_PIPER_CONFIG=${cfg.piperConfig}"
+          "AI_TOOLS_API_PIPER_MODEL=${deployedVoiceModel}"
+          "AI_TOOLS_API_PIPER_CONFIG=${deployedVoiceConfig}"
           "AI_TOOLS_API_STT_CONCURRENCY=${toString cfg.sttConcurrency}"
           "AI_TOOLS_API_TTS_CONCURRENCY=${toString cfg.ttsConcurrency}"
           "AI_TOOLS_API_STT_TIMEOUT=${toString cfg.sttTimeout}"

@@ -23,6 +23,8 @@ tracked tools.
 - Keep the Piper stdout-close patch. The pinned nixpkgs Piper 1.7.0 source still
   lacks the close before reading the temporary WAV. A focused package build
   proved the corrected patch applies and Python byte-compilation succeeds.
+- Package each Piper model beside its `.onnx.json` configuration. Piper 1.7.0
+  accepts but ignores `--config` and infers the adjacent file path.
 - Do not retest Whisper or Piper inference. Test only API behavior, adapters,
   process invocation, Nix composition, and module evaluation.
 - Do not inspect source text or dependency closures as tests.
@@ -39,10 +41,13 @@ tracked tools.
 - `nix flake check --all-systems --no-build`
   - Passed output evaluation for x86_64-linux and aarch64-linux.
 - `nix build .#ai-tools-api -L`
-  - Passed. Built the uv2nix application, patched Piper, Nix launcher, and fixed
-    model references. The first stale two-line patch applied at the wrong
-    location; it was replaced with a full-context patch and the clean rebuild
-    had no `IndentationError` or failed hunk.
+  - Passed. Built the uv2nix application, patched Piper, Nix launcher, adjacent
+    voice assets, and fixed model references. The first stale two-line patch
+    applied at the wrong location; it was replaced with a full-context patch and
+    the clean rebuild had no `IndentationError` or failed hunk.
+- Packaged Piper adapter diagnosis with `Hello my friend`
+  - Passed without playback: exit 0, 48,172 WAV bytes, one channel, 22,050 Hz,
+    and 24,064 frames.
 - `nix shell nixpkgs#actionlint -c actionlint`
   - Passed both GitHub workflow files.
 - Real Whisper and Piper inference were not run because they are third-party

@@ -74,6 +74,13 @@
           url = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json";
           hash = "sha256-7+GcQXvtBV8taZCCSMa6ZQ+hNbyGiw5quz2hgdq2kKA=";
         };
+        voiceAssets = pkgs.runCommand "ai-tools-api-en_US-lessac-medium" {} ''
+          mkdir -p "$out/share/ai-tools-api/voices"
+          ln -s ${voiceModel} "$out/share/ai-tools-api/voices/en_US-lessac-medium.onnx"
+          ln -s ${voiceConfig} "$out/share/ai-tools-api/voices/en_US-lessac-medium.onnx.json"
+        '';
+        voiceModelPath = "${voiceAssets}/share/ai-tools-api/voices/en_US-lessac-medium.onnx";
+        voiceConfigPath = "${voiceAssets}/share/ai-tools-api/voices/en_US-lessac-medium.onnx.json";
         piperPackage =
           (pkgs.piper-tts.override {
             withTrain = false;
@@ -94,8 +101,8 @@
             + ''
               wrapProgram "$out/bin/ai-tools-api" \
                 --set-default AI_TOOLS_API_PIPER ${lib.getExe piperPackage} \
-                --set-default AI_TOOLS_API_PIPER_MODEL ${voiceModel} \
-                --set-default AI_TOOLS_API_PIPER_CONFIG ${voiceConfig}
+                --set-default AI_TOOLS_API_PIPER_MODEL ${voiceModelPath} \
+                --set-default AI_TOOLS_API_PIPER_CONFIG ${voiceConfigPath}
             '';
         });
         application = pkgs.writeShellApplication {
