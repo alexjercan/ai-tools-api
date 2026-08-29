@@ -1,0 +1,17 @@
+[tracking]
+directory = "tasks"
+format = "markdown"
+
+[git]
+branch = "master"
+worktrees = false
+
+[checks.python]
+commands = ["ruff format --check .", "ruff check .", "mypy src", "pytest"]
+
+[checks.nix]
+commands = ["nix flake check -L", "nix build .#ai-tools-api"]
+
+[review]
+require_clean_status = true
+require_verification_evidence = true

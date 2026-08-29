@@ -1,0 +1,32 @@
+name: Check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: DeterminateSystems/nix-installer-action@v17
+      - name: Install locked Python environment
+        run: |
+          python -m pip install uv==0.12.5
+          uv sync --locked --all-extras
+      - name: Python checks
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run mypy src
+          uv run pytest
+      - name: Nix checks
+        run: nix flake check -L
