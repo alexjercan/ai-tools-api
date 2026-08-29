@@ -1,9 +1,30 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ErrorDetail(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    message: str = Field(alias="message")
+    type: str = Field(alias="type")
+    code: str = Field(alias="code")
+
+
+class ErrorEnvelope(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    error: ErrorDetail = Field(alias="error")
+
+
+ERROR_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
+    status: {"model": ErrorEnvelope} for status in (400, 413, 415, 429, 502, 503, 504)
+}
+
 
 _MESSAGES = {
     "invalid_content_type": "The request content type is invalid.",

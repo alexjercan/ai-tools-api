@@ -6,7 +6,7 @@ import time
 import uuid
 from typing import Annotated, Dict, NamedTuple, Tuple
 
-from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import (
@@ -22,7 +22,12 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from ai_tools_api.backends import SynthesisService, TranscriptionService
 from ai_tools_api.config import Settings
-from ai_tools_api.errors import ApiError, api_error_handler, error_response
+from ai_tools_api.errors import (
+    ERROR_RESPONSES,
+    ApiError,
+    api_error_handler,
+    error_response,
+)
 from ai_tools_api.gates import ConcurrencyGate
 
 logger = logging.getLogger("ai_tools_api")
@@ -105,10 +110,14 @@ class SpeechRequest(BaseModel):
             encoded = value.encode("utf-8", errors="strict")
         except UnicodeEncodeError as error:
             raise PydanticCustomError("invalid_request", "Invalid input") from error
-        limit = (info.context or {}).get("max_text_bytes", 4096)
+        limit = (info.context or {}).get("max_text_bytes", 65536)
         if len(encoded) > limit:
             raise PydanticCustomError("input_too_large", "Input too large")
         return value
+
+
+class AudioResponse(Response):
+    media_type = "audio/wav"
 
 
 class RequestPolicy(NamedTuple):
@@ -246,20 +255,18 @@ def create_app(
         except ValidationError as error:
             raise RequestValidationError(error.errors()) from error
 
-    async def parse_speech(request: Request) -> SpeechRequest:
-        content = bytearray()
-        async for chunk in request.stream():
-            content.extend(chunk)
-            if len(content) > settings.max_text_bytes + 4096:
-                raise ApiError("input_too_large", 413)
+    def parse_speech(
+        payload: Annotated[SpeechRequest, Body()],
+    ) -> SpeechRequest:
         try:
-            return SpeechRequest.model_validate_json(
-                content, context={"max_text_bytes": settings.max_text_bytes}
+            return SpeechRequest.model_validate(
+                payload.model_dump(by_alias=True),
+                context={"max_text_bytes": settings.max_text_bytes},
             )
         except ValidationError as error:
             raise RequestValidationError(error.errors()) from error
 
-    @app.post("/v1/audio/transcriptions")
+    @app.post("/v1/audio/transcriptions", responses=ERROR_RESPONSES)
     async def transcriptions(
         file: Annotated[UploadFile, File()],
         request: TranscriptionRequest = Depends(parse_transcription),  # noqa: B008
@@ -271,7 +278,11 @@ def create_app(
             )
         return {"text": text}
 
-    @app.post("/v1/audio/speech")
+    @app.post(
+        "/v1/audio/speech",
+        response_class=AudioResponse,
+        responses=ERROR_RESPONSES,
+    )
     async def speech(
         request: SpeechRequest = Depends(parse_speech),  # noqa: B008
     ) -> Response:
@@ -279,6 +290,6 @@ def create_app(
             wav = await synthesis_service.synthesize(
                 request.input, settings.tts_timeout_seconds
             )
-        return Response(wav, media_type="audio/wav")
+        return AudioResponse(wav)
 
     return app
