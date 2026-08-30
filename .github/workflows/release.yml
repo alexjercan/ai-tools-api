@@ -2,54 +2,53 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      # Stable semantic versions only. Suffixes do not match this filter.
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: DeterminateSystems/nix-installer-action@v17
-      - name: Install locked Python environment
-        run: |
-          python -m pip install uv==0.12.5
-          uv sync --locked --all-extras
-      - name: Check
-        run: |
-          uv run ruff format --check .
-          uv run ruff check .
-          uv run mypy src
-          uv run pytest
-          nix flake check -L
-      - name: Build distributions and Nix package
-        run: |
-          uv build
-          nix build .#ai-tools-api
-          sha256sum dist/* > SHA256SUMS
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-files
-          path: |
-            dist/*
-            SHA256SUMS
+  check:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/check.yml
 
   release:
-    needs: build
+    needs: check
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-files
-          path: release-files
-      - name: Publish GitHub Release
+      - uses: actions/checkout@v4
+
+      - name: Verify tag and package version
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Tag is not a stable semantic version: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+          package_version="$(python3 - <<'PY'
+          import tomllib
+
+          with open("pyproject.toml", "rb") as project_file:
+              print(tomllib.load(project_file)["project"]["version"])
+          PY
+          )"
+          expected_tag="v${package_version}"
+          if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $package_version" >&2
+            exit 1
+          fi
+
+      - name: Create source release
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release-files/dist/* release-files/SHA256SUMS --generate-notes
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "ai-tools-api $GITHUB_REF_NAME" \
+            --generate-notes

@@ -1,16 +1,19 @@
 name: Check
 
 on:
+  # Branch-filtered so release tags run this suite only through release.yml.
   push:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
   check:
+    name: Repository checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,3 +33,5 @@ jobs:
           uv run pytest
       - name: Nix checks
         run: nix flake check -L
+      - name: Build Nix package
+        run: nix build .#ai-tools-api
