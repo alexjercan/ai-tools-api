@@ -144,7 +144,7 @@ in {
         NoNewPrivileges = true;
         PrivateTmp = true;
         ProtectSystem = "strict";
-        ProtectHome = true;
+        ProtectHome = "tmpfs";
         UMask = "0077";
         TimeoutStopSec = 10;
       };
@@ -183,7 +183,7 @@ in {
         NoNewPrivileges = true;
         PrivateTmp = true;
         ProtectSystem = "strict";
-        ProtectHome = true;
+        ProtectHome = "tmpfs";
         UMask = "0077";
         TimeoutStopSec = 10;
       };

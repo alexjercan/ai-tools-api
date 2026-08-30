@@ -231,6 +231,8 @@
           assert !(disabledHome.config.systemd.user.services ? ai-tools-api-whisper);
           assert enabledHome.config.systemd.user.services ? ai-tools-api;
           assert enabledHome.config.systemd.user.services ? ai-tools-api-whisper;
+          assert enabledHome.config.systemd.user.services.ai-tools-api.Service.ProtectHome == "tmpfs";
+          assert enabledHome.config.systemd.user.services.ai-tools-api-whisper.Service.ProtectHome == "tmpfs";
           assert enabledHome.config.services.ai-tools-api.whisperPort == 10301;
             pkgs.runCommand "ai-tools-api-module-evaluation" {
               enabled = enabledHome.activationPackage;
