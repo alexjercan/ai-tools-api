@@ -9,6 +9,13 @@ immutable `vX.Y.Z` tags; see [RELEASE.md](RELEASE.md) for the process.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-30
+
+### Fixed
+
+- Home Manager user services can enter their protected runtime working
+  directories.
+
 ## [0.1.0] - 2026-08-30
 
 ### Added
@@ -20,5 +27,6 @@ immutable `vX.Y.Z` tags; see [RELEASE.md](RELEASE.md) for the process.
   services.
 - Deterministic Python, Nix package, and Home Manager module checks.
 
-[Unreleased]: https://github.com/alexjercan/ai-tools-api/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/alexjercan/ai-tools-api/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/alexjercan/ai-tools-api/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/alexjercan/ai-tools-api/releases/tag/v0.1.0

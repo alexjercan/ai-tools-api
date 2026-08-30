@@ -1,6 +1,6 @@
 # Fix user service runtime directory isolation
 
-- STATUS: CLOSED
+- STATUS: IN_PROGRESS
 - PRIORITY: 100
 - TAGS: nix, systemd
 
