@@ -1,6 +1,6 @@
 # Fix user service runtime directory isolation
 
-- STATUS: IN_PROGRESS
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS: nix, systemd
 
@@ -29,4 +29,15 @@ The Home Manager module evaluation check now asserts this mode for both generate
 - `nix flake check -L` passed formatting, lint, strict typing, 10 unit tests, module evaluation, and package evaluation.
 - `nix build .#ai-tools-api --no-link` passed.
 - `git diff --check` passed.
+
+## Release v0.1.1
+
+Prepared patch release 0.1.1 with the runtime isolation fix, updated locked project metadata, and documented the change.
+
+Release verification:
+
+- `ruff format --check .`, `ruff check .`, `mypy src`, and `pytest` passed; pytest ran 10 tests with one upstream Starlette deprecation warning.
+- `nix flake check -L` passed all source, package, and Home Manager checks.
+- `nix build .#ai-tools-api --no-link` passed.
+- The release commit is tagged with immutable annotated tag `v0.1.1` and published from `master`.
 
