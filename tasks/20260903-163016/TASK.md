@@ -1,6 +1,6 @@
 # Release llama.cpp chat completions
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS: release
 
@@ -28,5 +28,13 @@ Pre-release checks on 2026-09-03:
 - `nix build .#ai-tools-api -L`: passed with both pinned Q8 models.
 - `git diff --check`: passed.
 
-Record pushed revisions, workflow runs, and release URL after publication.
+Publication:
+
+- Release commit and annotated `v0.2.0` tag target
+  `b05e0b4bf94337d7bb74cb17aef323d1ce963464`.
+- Pushed `master`, then pushed only `v0.2.0`.
+- Branch check passed: https://github.com/alexjercan/ai-tools-api/actions/runs/33761637957
+- Tag check and source release passed: https://github.com/alexjercan/ai-tools-api/actions/runs/33761642222
+- Published stable source release:
+  https://github.com/alexjercan/ai-tools-api/releases/tag/v0.2.0
 
