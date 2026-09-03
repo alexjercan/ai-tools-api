@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import struct
-from typing import List, Tuple
+from collections.abc import AsyncIterator
+from typing import Any, List, Tuple
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +23,7 @@ class RecordingBackend:
     def __init__(self) -> None:
         self.stt_calls: List[Tuple[bytes, str, float]] = []
         self.tts_calls: List[Tuple[str, float]] = []
+        self.llm_calls: List[Tuple[dict[str, Any], float]] = []
 
     async def transcribe(self, audio: bytes, language: str, timeout: float) -> str:
         self.stt_calls.append((audio, language, timeout))
@@ -30,6 +32,25 @@ class RecordingBackend:
     async def synthesize(self, text: str, timeout: float) -> bytes:
         self.tts_calls.append((text, timeout))
         return wav_bytes()
+
+    async def complete(self, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+        self.llm_calls.append((payload, timeout))
+        return {
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "created": 1,
+            "model": payload["model"],
+            "choices": [
+                {"index": 0, "message": {"role": "assistant", "content": "ok"}}
+            ],
+        }
+
+    async def stream(
+        self, payload: dict[str, Any], timeout: float
+    ) -> AsyncIterator[bytes]:
+        self.llm_calls.append((payload, timeout))
+        yield b'data: {"object":"chat.completion.chunk"}\n\n'
+        yield b"data: [DONE]\n\n"
 
 
 @pytest.fixture
@@ -40,5 +61,10 @@ def backend() -> RecordingBackend:
 @pytest.fixture
 def client(backend: RecordingBackend) -> TestClient:
     return TestClient(
-        create_app(Settings(max_upload_bytes=1024, max_text_bytes=64), backend, backend)
+        create_app(
+            Settings(max_upload_bytes=1024, max_text_bytes=64),
+            backend,
+            backend,
+            backend,
+        )
     )

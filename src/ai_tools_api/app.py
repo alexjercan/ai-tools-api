@@ -4,11 +4,12 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import Annotated, Dict, NamedTuple, Tuple
 
 from fastapi import Body, Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -20,7 +21,12 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 from starlette.middleware.base import RequestResponseEndpoint
 
-from ai_tools_api.backends import SynthesisService, TranscriptionService
+from ai_tools_api.backends import (
+    GenerationService,
+    SynthesisService,
+    TranscriptionService,
+)
+from ai_tools_api.chat import ChatCompletionRequest
 from ai_tools_api.config import Settings
 from ai_tools_api.errors import (
     ERROR_RESPONSES,
@@ -125,12 +131,13 @@ class RequestPolicy(NamedTuple):
     content_type_prefix: bool
     max_request_bytes: int
     oversized_code: str
+    require_declared_size: bool = False
 
 
-def _declared_size(request: Request) -> int:
+def _declared_size(request: Request) -> int | None:
     value = request.headers.get("content-length")
     if value is None:
-        return 0
+        return None
     try:
         return int(value)
     except ValueError:
@@ -172,6 +179,7 @@ def create_app(
     settings: Settings,
     transcription_service: TranscriptionService,
     synthesis_service: SynthesisService,
+    generation_service: GenerationService,
 ) -> FastAPI:
     app = FastAPI(
         docs_url="/docs",
@@ -192,6 +200,13 @@ def create_app(
             settings.max_text_bytes + 4096,
             "input_too_large",
         ),
+        ("POST", "/v1/chat/completions"): RequestPolicy(
+            "application/json",
+            False,
+            settings.llm_max_request_bytes,
+            "input_too_large",
+            True,
+        ),
     }
 
     @app.middleware("http")
@@ -205,7 +220,8 @@ def create_app(
         if policy is not None and not _content_type_matches(request, policy):
             response = error_response("invalid_content_type", 415)
         elif policy is not None and (
-            (size := _declared_size(request)) < 0 or size > policy.max_request_bytes
+            ((size := _declared_size(request)) is None and policy.require_declared_size)
+            or (size is not None and (size < 0 or size > policy.max_request_bytes))
         ):
             response = error_response(policy.oversized_code, 413)
         else:
@@ -221,6 +237,7 @@ def create_app(
 
     stt_gate = ConcurrencyGate(settings.stt_concurrency)
     tts_gate = ConcurrencyGate(settings.tts_concurrency)
+    llm_gate = ConcurrencyGate(settings.llm_concurrency)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(
@@ -266,6 +283,17 @@ def create_app(
         except ValidationError as error:
             raise RequestValidationError(error.errors()) from error
 
+    def parse_chat(
+        payload: Annotated[ChatCompletionRequest, Body()],
+    ) -> ChatCompletionRequest:
+        try:
+            return ChatCompletionRequest.model_validate(
+                payload.model_dump(mode="json"),
+                context={"max_request_bytes": settings.llm_max_request_bytes},
+            )
+        except ValidationError as error:
+            raise RequestValidationError(error.errors()) from error
+
     @app.post("/v1/audio/transcriptions", responses=ERROR_RESPONSES)
     async def transcriptions(
         file: Annotated[UploadFile, File()],
@@ -277,6 +305,31 @@ def create_app(
                 audio, request.language, settings.stt_timeout_seconds
             )
         return {"text": text}
+
+    @app.post("/v1/chat/completions", responses=ERROR_RESPONSES)
+    async def chat_completions(
+        request: ChatCompletionRequest = Depends(parse_chat),  # noqa: B008
+    ) -> Response:
+        payload = request.backend_payload()
+        if not request.stream:
+            async with llm_gate:
+                completion = await generation_service.complete(
+                    payload, settings.llm_timeout_seconds
+                )
+            return JSONResponse(completion)
+
+        async def events() -> AsyncIterator[bytes]:
+            async with llm_gate:
+                async for event in generation_service.stream(
+                    payload, settings.llm_timeout_seconds
+                ):
+                    yield event
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post(
         "/v1/audio/speech",

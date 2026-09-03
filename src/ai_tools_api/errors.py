@@ -32,13 +32,13 @@ _MESSAGES = {
     "unsupported_voice": "The requested voice is not supported.",
     "unsupported_format": "The response format is not supported.",
     "empty_input": "Speech input must not be empty.",
-    "input_too_large": "Speech input is too large.",
+    "input_too_large": "The request input is too large.",
     "audio_too_large": "The audio upload is too large.",
     "invalid_audio": "The audio upload is invalid.",
-    "backend_unavailable": "The speech backend is unavailable.",
-    "backend_failure": "The speech backend failed.",
-    "timeout": "The speech request timed out.",
-    "overloaded": "The speech service is busy.",
+    "backend_unavailable": "The inference backend is unavailable.",
+    "backend_failure": "The inference backend failed.",
+    "timeout": "The inference request timed out.",
+    "overloaded": "The inference service is busy.",
     "invalid_request": "The request is invalid.",
 }
 

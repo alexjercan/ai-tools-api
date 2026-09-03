@@ -28,11 +28,24 @@ class Settings(BaseSettings):
         description="Private loopback Whisper inference URL.",
     )
 
-    @field_validator("whisper_url")
+    llama_url: HttpUrl = Field(
+        default=HttpUrl("http://127.0.0.1:10302/v1/chat/completions"),
+        alias="AI_TOOLS_API_LLAMA_URL",
+        description="Private loopback llama.cpp chat completions URL.",
+    )
+
+    @field_validator("whisper_url", "llama_url")
     @classmethod
-    def loopback_whisper_url(cls, value: HttpUrl) -> HttpUrl:
-        if value.host not in {"127.0.0.1", "localhost", "::1"}:
-            raise ValueError("Whisper URL must use loopback")
+    def loopback_backend_url(cls, value: HttpUrl) -> HttpUrl:
+        if (
+            value.scheme != "http"
+            or value.host not in {"127.0.0.1", "localhost", "::1"}
+            or value.username is not None
+            or value.password is not None
+            or value.query is not None
+            or value.fragment is not None
+        ):
+            raise ValueError("Backend URL must use plain HTTP on loopback")
         return value
 
     piper_executable: str = Field(
@@ -69,7 +82,21 @@ class Settings(BaseSettings):
         ge=1024,
         le=128 * 1024 * 1024,
         alias="AI_TOOLS_API_MAX_OUTPUT_BYTES",
-        description="Maximum captured backend response bytes.",
+        description="Maximum captured speech backend response bytes.",
+    )
+    llm_max_request_bytes: int = Field(
+        default=1024 * 1024,
+        ge=1024,
+        le=8 * 1024 * 1024,
+        alias="AI_TOOLS_API_LLM_MAX_REQUEST_BYTES",
+        description="Maximum chat completion request bytes.",
+    )
+    llm_max_output_bytes: int = Field(
+        default=16 * 1024 * 1024,
+        ge=1024,
+        le=128 * 1024 * 1024,
+        alias="AI_TOOLS_API_LLM_MAX_OUTPUT_BYTES",
+        description="Maximum chat completion backend response bytes.",
     )
     stt_concurrency: int = Field(
         default=2,
@@ -85,6 +112,13 @@ class Settings(BaseSettings):
         alias="AI_TOOLS_API_TTS_CONCURRENCY",
         description="Maximum concurrent synthesis requests.",
     )
+    llm_concurrency: int = Field(
+        default=1,
+        ge=1,
+        le=32,
+        alias="AI_TOOLS_API_LLM_CONCURRENCY",
+        description="Maximum concurrent chat completion requests.",
+    )
     stt_timeout_seconds: float = Field(
         default=120.0,
         ge=0.1,
@@ -99,12 +133,19 @@ class Settings(BaseSettings):
         alias="AI_TOOLS_API_TTS_TIMEOUT",
         description="Synthesis backend timeout in seconds.",
     )
+    llm_timeout_seconds: float = Field(
+        default=600.0,
+        ge=0.1,
+        le=3600,
+        alias="AI_TOOLS_API_LLM_TIMEOUT",
+        description="Chat completion backend timeout in seconds.",
+    )
     startup_timeout_seconds: float = Field(
         default=30.0,
         ge=0.1,
         le=600,
         alias="AI_TOOLS_API_STARTUP_TIMEOUT",
-        description="Whisper readiness timeout in seconds.",
+        description="Backend readiness timeout in seconds.",
     )
     shutdown_grace_seconds: float = Field(
         default=3.0,

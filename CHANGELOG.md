@@ -9,6 +9,11 @@ immutable `vX.Y.Z` tags; see [RELEASE.md](RELEASE.md) for the process.
 
 ## [Unreleased]
 
+### Added
+
+- Strict OpenAI-compatible chat completions with bounded JSON and SSE responses.
+- An owned loopback llama.cpp model router with pinned Qwen and Gemma models.
+
 ## [0.1.1] - 2026-08-30
 
 ### Fixed

@@ -5,6 +5,7 @@
   ...
 }: let
   cfg = config.services.ai-tools-api;
+  llamaModels = import ./llama-models.nix {inherit pkgs;};
   model = pkgs.fetchurl {
     name = "ggml-large-v3-turbo-q5_0.bin";
     url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin";
@@ -27,14 +28,18 @@
   '';
   deployedVoiceModel = "${deployedVoiceAssets}/en_US-lessac-medium.onnx";
   deployedVoiceConfig = "${deployedVoiceAssets}/en_US-lessac-medium.onnx.json";
-  whisperReady = pkgs.writeShellScript "ai-tools-api-whisper-ready" ''
-    for _ in $(${pkgs.coreutils}/bin/seq 1 600); do
-      if ${lib.getExe' pkgs.netcat-openbsd "nc"} -z 127.0.0.1 ${toString cfg.whisperPort}; then
-        exit 0
-      fi
-      ${pkgs.coreutils}/bin/sleep 0.05
+  backendReady = pkgs.writeShellScript "ai-tools-api-backends-ready" ''
+    for port in ${toString cfg.whisperPort} ${toString cfg.llamaPort}; do
+      ready=0
+      for _ in $(${pkgs.coreutils}/bin/seq 1 600); do
+        if ${lib.getExe' pkgs.netcat-openbsd "nc"} -z 127.0.0.1 "$port"; then
+          ready=1
+          break
+        fi
+        ${pkgs.coreutils}/bin/sleep 0.05
+      done
+      if [ "$ready" -ne 1 ]; then exit 1; fi
     done
-    exit 1
   '';
   piperPackage =
     (pkgs.piper-tts.override {
@@ -50,8 +55,8 @@ in {
     enable = lib.mkEnableOption "the private AI tools API";
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${pkgs.stdenv.hostPlatform.system}.ai-tools-api;
-      description = "Complete API runtime package.";
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.ai-tools-api-core;
+      description = "API process package used with separately managed backends.";
     };
     host = lib.mkOption {
       type = lib.types.str;
@@ -78,6 +83,21 @@ in {
       default = 10301;
       description = "Private loopback Whisper port.";
     };
+    llamaPackage = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.llama-cpp-vulkan;
+      description = "Package providing llama-server.";
+    };
+    llamaModelsPreset = lib.mkOption {
+      type = lib.types.package;
+      default = llamaModels.preset;
+      description = "Pinned llama.cpp model router preset.";
+    };
+    llamaPort = lib.mkOption {
+      type = lib.types.port;
+      default = 10302;
+      description = "Private loopback llama.cpp port.";
+    };
     piperPackage = lib.mkOption {
       type = lib.types.package;
       default = piperPackage;
@@ -103,6 +123,21 @@ in {
       default = 2;
       description = "Maximum concurrent synthesis requests.";
     };
+    llmConcurrency = lib.mkOption {
+      type = lib.types.ints.between 1 32;
+      default = 1;
+      description = "Maximum concurrent chat completion requests.";
+    };
+    llmMaxRequestBytes = lib.mkOption {
+      type = lib.types.ints.between 1024 (8 * 1024 * 1024);
+      default = 1024 * 1024;
+      description = "Maximum chat completion request bytes.";
+    };
+    llmMaxOutputBytes = lib.mkOption {
+      type = lib.types.ints.between 1024 (128 * 1024 * 1024);
+      default = 16 * 1024 * 1024;
+      description = "Maximum chat completion response bytes.";
+    };
     sttTimeout = lib.mkOption {
       type = lib.types.ints.between 1 600;
       default = 120;
@@ -112,6 +147,11 @@ in {
       type = lib.types.ints.between 1 600;
       default = 60;
       description = "Synthesis timeout in seconds.";
+    };
+    llmTimeout = lib.mkOption {
+      type = lib.types.ints.between 1 3600;
+      default = 600;
+      description = "Chat completion timeout in seconds.";
     };
   };
 
@@ -151,30 +191,75 @@ in {
       Install.WantedBy = ["default.target"];
     };
 
-    systemd.user.services.ai-tools-api = {
+    systemd.user.services.ai-tools-api-llama = {
       Unit = {
-        Description = "Private AI tools API";
-        Requires = ["ai-tools-api-whisper.service"];
-        After = ["ai-tools-api-whisper.service"];
+        Description = "Private loopback llama.cpp server";
         StartLimitIntervalSec = 60;
         StartLimitBurst = 3;
       };
       Service = {
         Type = "simple";
-        ExecStartPre = whisperReady;
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe' cfg.llamaPackage "llama-server")
+          "--models-preset"
+          (toString cfg.llamaModelsPreset)
+          "--host"
+          "127.0.0.1"
+          "--port"
+          (toString cfg.llamaPort)
+          "--ctx-size"
+          "128000"
+        ];
+        Restart = "on-failure";
+        RestartSec = 5;
+        RuntimeDirectory = "ai-tools-api-llama";
+        WorkingDirectory = "%t/ai-tools-api-llama";
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = "tmpfs";
+        UMask = "0077";
+        TimeoutStopSec = 10;
+      };
+      Install.WantedBy = ["default.target"];
+    };
+
+    systemd.user.services.ai-tools-api = {
+      Unit = {
+        Description = "Private AI tools API";
+        Requires = [
+          "ai-tools-api-whisper.service"
+          "ai-tools-api-llama.service"
+        ];
+        After = [
+          "ai-tools-api-whisper.service"
+          "ai-tools-api-llama.service"
+        ];
+        StartLimitIntervalSec = 60;
+        StartLimitBurst = 3;
+      };
+      Service = {
+        Type = "simple";
+        ExecStartPre = backendReady;
         ExecStart = lib.getExe cfg.package;
         Environment = [
           "AI_TOOLS_API_EXTERNAL_WHISPER=1"
+          "AI_TOOLS_API_EXTERNAL_LLAMA=1"
           "AI_TOOLS_API_HOST=${cfg.host}"
           "AI_TOOLS_API_PORT=${toString cfg.port}"
           "AI_TOOLS_API_WHISPER_URL=http://127.0.0.1:${toString cfg.whisperPort}/private-inference"
+          "AI_TOOLS_API_LLAMA_URL=http://127.0.0.1:${toString cfg.llamaPort}/v1/chat/completions"
           "AI_TOOLS_API_PIPER=${lib.getExe cfg.piperPackage}"
           "AI_TOOLS_API_PIPER_MODEL=${deployedVoiceModel}"
           "AI_TOOLS_API_PIPER_CONFIG=${deployedVoiceConfig}"
           "AI_TOOLS_API_STT_CONCURRENCY=${toString cfg.sttConcurrency}"
           "AI_TOOLS_API_TTS_CONCURRENCY=${toString cfg.ttsConcurrency}"
+          "AI_TOOLS_API_LLM_CONCURRENCY=${toString cfg.llmConcurrency}"
+          "AI_TOOLS_API_LLM_MAX_REQUEST_BYTES=${toString cfg.llmMaxRequestBytes}"
+          "AI_TOOLS_API_LLM_MAX_OUTPUT_BYTES=${toString cfg.llmMaxOutputBytes}"
           "AI_TOOLS_API_STT_TIMEOUT=${toString cfg.sttTimeout}"
           "AI_TOOLS_API_TTS_TIMEOUT=${toString cfg.ttsTimeout}"
+          "AI_TOOLS_API_LLM_TIMEOUT=${toString cfg.llmTimeout}"
         ];
         Restart = "on-failure";
         RestartSec = 5;

@@ -5,8 +5,11 @@ import http.client
 import json
 import os
 import secrets
-from typing import List, Protocol
+from collections.abc import AsyncIterator
+from typing import Any, List, Protocol, cast
 from urllib.parse import urlsplit
+
+import httpx
 
 from ai_tools_api.config import Settings
 from ai_tools_api.errors import ApiError
@@ -19,6 +22,132 @@ class TranscriptionService(Protocol):
 
 class SynthesisService(Protocol):
     async def synthesize(self, text: str, timeout: float) -> bytes: ...
+
+
+class GenerationService(Protocol):
+    async def complete(
+        self, payload: dict[str, Any], timeout: float
+    ) -> dict[str, Any]: ...
+
+    def stream(
+        self, payload: dict[str, Any], timeout: float
+    ) -> AsyncIterator[bytes]: ...
+
+
+class LlamaService:
+    def __init__(
+        self,
+        url: str,
+        max_output_bytes: int,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self.url = url
+        self.max_output_bytes = max_output_bytes
+        self.transport = transport
+
+    async def complete(self, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+        try:
+            async with asyncio.timeout(timeout):
+                async with httpx.AsyncClient(transport=self.transport) as client:
+                    async with client.stream(
+                        "POST", self.url, json=payload
+                    ) as response:
+                        if response.status_code != 200 or not response.headers.get(
+                            "content-type", ""
+                        ).lower().startswith("application/json"):
+                            raise ApiError("backend_failure", 502)
+                        raw = await self._read_bounded(response)
+            return self._completion(raw)
+        except TimeoutError as error:
+            raise ApiError("timeout", 504) from error
+        except ApiError:
+            raise
+        except httpx.HTTPError as error:
+            raise ApiError("backend_unavailable", 503) from error
+
+    async def stream(
+        self, payload: dict[str, Any], timeout: float
+    ) -> AsyncIterator[bytes]:
+        total = 0
+        buffer = bytearray()
+        done = False
+        try:
+            async with asyncio.timeout(timeout):
+                async with httpx.AsyncClient(transport=self.transport) as client:
+                    async with client.stream(
+                        "POST", self.url, json=payload
+                    ) as response:
+                        if response.status_code != 200 or not response.headers.get(
+                            "content-type", ""
+                        ).lower().startswith("text/event-stream"):
+                            raise ApiError("backend_failure", 502)
+                        async for chunk in response.aiter_bytes():
+                            total += len(chunk)
+                            if total > self.max_output_bytes:
+                                raise ApiError("backend_failure", 502)
+                            buffer.extend(chunk)
+                            buffer[:] = buffer.replace(b"\r\n", b"\n")
+                            while b"\n\n" in buffer:
+                                event, _, remainder = buffer.partition(b"\n\n")
+                                buffer = bytearray(remainder)
+                                normalized, event_done = self._stream_event(
+                                    bytes(event)
+                                )
+                                done = done or event_done
+                                yield normalized
+                        if buffer or not done:
+                            raise ApiError("backend_failure", 502)
+        except TimeoutError as error:
+            raise ApiError("timeout", 504) from error
+        except ApiError:
+            raise
+        except httpx.HTTPError as error:
+            raise ApiError("backend_unavailable", 503) from error
+
+    async def _read_bounded(self, response: httpx.Response) -> bytes:
+        content = bytearray()
+        async for chunk in response.aiter_bytes():
+            content.extend(chunk)
+            if len(content) > self.max_output_bytes:
+                raise ApiError("backend_failure", 502)
+        return bytes(content)
+
+    @staticmethod
+    def _completion(raw: bytes) -> dict[str, Any]:
+        try:
+            value = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ApiError("backend_failure", 502) from error
+        if not LlamaService._valid_response(value, "chat.completion"):
+            raise ApiError("backend_failure", 502)
+        return cast(dict[str, Any], value)
+
+    @staticmethod
+    def _stream_event(event: bytes) -> tuple[bytes, bool]:
+        lines = event.splitlines()
+        if len(lines) != 1 or not lines[0].startswith(b"data: "):
+            raise ApiError("backend_failure", 502)
+        data = lines[0][6:]
+        if data == b"[DONE]":
+            return b"data: [DONE]\n\n", True
+        try:
+            value = json.loads(data)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ApiError("backend_failure", 502) from error
+        if not LlamaService._valid_response(value, "chat.completion.chunk"):
+            raise ApiError("backend_failure", 502)
+        normalized = json.dumps(value, separators=(",", ":")).encode()
+        return b"data: " + normalized + b"\n\n", False
+
+    @staticmethod
+    def _valid_response(value: object, kind: str) -> bool:
+        return (
+            isinstance(value, dict)
+            and value.get("object") == kind
+            and isinstance(value.get("id"), str)
+            and isinstance(value.get("model"), str)
+            and isinstance(value.get("choices"), list)
+        )
 
 
 class WhisperService:
@@ -163,6 +292,10 @@ class PiperService:
 
 def trusted_whisper_service(settings: Settings) -> WhisperService:
     return WhisperService(str(settings.whisper_url), settings.max_backend_output_bytes)
+
+
+def trusted_llama_service(settings: Settings) -> LlamaService:
+    return LlamaService(str(settings.llama_url), settings.llm_max_output_bytes)
 
 
 def trusted_piper_service(settings: Settings) -> PiperService:
