@@ -9,6 +9,8 @@ immutable `vX.Y.Z` tags; see [RELEASE.md](RELEASE.md) for the process.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-03
+
 ### Added
 
 - Strict OpenAI-compatible chat completions with bounded JSON and SSE responses.
@@ -32,6 +34,7 @@ immutable `vX.Y.Z` tags; see [RELEASE.md](RELEASE.md) for the process.
   services.
 - Deterministic Python, Nix package, and Home Manager module checks.
 
-[Unreleased]: https://github.com/alexjercan/ai-tools-api/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/alexjercan/ai-tools-api/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/alexjercan/ai-tools-api/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/alexjercan/ai-tools-api/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/alexjercan/ai-tools-api/releases/tag/v0.1.0
