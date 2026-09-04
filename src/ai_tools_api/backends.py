@@ -48,7 +48,9 @@ class LlamaService:
     async def complete(self, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
         try:
             async with asyncio.timeout(timeout):
-                async with httpx.AsyncClient(transport=self.transport) as client:
+                async with httpx.AsyncClient(
+                    transport=self.transport, timeout=timeout
+                ) as client:
                     async with client.stream(
                         "POST", self.url, json=payload
                     ) as response:
@@ -62,6 +64,8 @@ class LlamaService:
             raise ApiError("timeout", 504) from error
         except ApiError:
             raise
+        except httpx.TimeoutException as error:
+            raise ApiError("timeout", 504) from error
         except httpx.HTTPError as error:
             raise ApiError("backend_unavailable", 503) from error
 
@@ -73,7 +77,9 @@ class LlamaService:
         done = False
         try:
             async with asyncio.timeout(timeout):
-                async with httpx.AsyncClient(transport=self.transport) as client:
+                async with httpx.AsyncClient(
+                    transport=self.transport, timeout=timeout
+                ) as client:
                     async with client.stream(
                         "POST", self.url, json=payload
                     ) as response:
@@ -101,6 +107,8 @@ class LlamaService:
             raise ApiError("timeout", 504) from error
         except ApiError:
             raise
+        except httpx.TimeoutException as error:
+            raise ApiError("timeout", 504) from error
         except httpx.HTTPError as error:
             raise ApiError("backend_unavailable", 503) from error
 

@@ -52,6 +52,46 @@ def test_llama_completion_and_stream_validation() -> None:
     assert asyncio.run(collect()).endswith(b"data: [DONE]\n\n")
 
 
+def test_llama_uses_only_configured_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_client = httpx.AsyncClient
+    client_timeouts: list[object] = []
+
+    def client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+        client_timeouts.append(kwargs.get("timeout", "missing"))
+        return original_client(*args, **kwargs)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.content.find(b'"stream":true') >= 0:
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=b"data: [DONE]\n\n",
+            )
+        return httpx.Response(200, json=completion_response())
+
+    monkeypatch.setattr(httpx, "AsyncClient", client)
+    service = LlamaService("http://127.0.0.1/chat", 4096, httpx.MockTransport(handler))
+    asyncio.run(service.complete({"stream": False}, 1))
+
+    async def collect() -> None:
+        async for _event in service.stream({"stream": True}, 1):
+            pass
+
+    asyncio.run(collect())
+    assert client_timeouts == [1, 1]
+
+
+def test_llama_http_timeout_is_sanitized() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("/secret/backend stalled")
+
+    service = LlamaService("http://127.0.0.1/chat", 4096, httpx.MockTransport(handler))
+    with pytest.raises(ApiError) as raised:
+        asyncio.run(service.complete({}, 1))
+    assert raised.value.code == "timeout"
+    assert "/secret" not in str(raised.value)
+
+
 def test_llama_malformed_output_is_sanitized() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(
