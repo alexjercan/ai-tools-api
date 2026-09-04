@@ -1,6 +1,6 @@
 # Release backend timeout fix
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS: release
 
@@ -28,5 +28,18 @@ Pre-release checks:
 - `nix build .#ai-tools-api -L` passed.
 - `git diff --check` passed.
 
-Publication and deployment are pending.
+Publication and deployment:
+
+- Release commit and annotated `v0.2.1` tag target
+  `f05191a507c4ac834d90ac67ef5da03bf1f424aa`.
+- Pushed `master` and only the `v0.2.1` tag.
+- Branch check passed:
+  https://github.com/alexjercan/ai-tools-api/actions/runs/33843489304
+- Tag check and source release passed:
+  https://github.com/alexjercan/ai-tools-api/actions/runs/33843492066
+- Published stable source release:
+  https://github.com/alexjercan/ai-tools-api/releases/tag/v0.2.1
+- `nix.dotfiles` commit `606c992` pins v0.2.1 and was pushed to `master`.
+- Home Manager activation completed. The active API uses 0.2.1, and a live
+  non-streaming Gemma request that exceeded five seconds returned HTTP 200.
 
